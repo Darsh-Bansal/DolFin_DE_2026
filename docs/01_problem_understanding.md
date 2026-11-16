@@ -1,0 +1,22 @@
+# Phase 1: Problem understanding (Team T0019 DolFin)
+
+**Context.** We joined the Housing.com data team. The old database has no documented schema and seven problems reported by product teams. The seed data holds 120,060 listings and the business expects 20× that next year.
+
+| # | Problem in our own words | What the business needs | Stakeholder affected | Type | Queries |
+|---|--------------------------|--------------------------|----------------------|------|---------|
+| P1 | Searching homes to rent or buy (filters, price per sq ft, map view, amenity filter) is slow. | A search page that answers in a few milliseconds even while thousands of people filter by locality, BHK, price and amenities, so seekers don't leave. | Home seeker (tenant / buyer) | **Customer-facing, real-time** | R01, R02, R05, R09, R16 |
+| P2 | Property pages, project pages and RERA lookups lag. | A page for one property or project must load instantly: its project, builder, amenities, other listings in the project, and the project's RERA registration. | Home seeker (buyer doing due diligence), investor | **Customer-facing, real-time** | R03, R10, R11, R24 |
+| P3 | Owner and agent tools are slow: dashboards, site-visit schedules, posting a listing, cutting a price, changing status. | Owners and agents must see their own listings, enquiries and visits right away, and their writes (insert/update) must stay fast. | Owner, agent | **Customer-facing, real-time** (includes writes) | R06, R07, W01, W02, W03, W05 |
+| P4 | Hourly alerts and follow-ups take too long: price-drop alerts, leads with no site visit, stale listings with no enquiry. | Background jobs that finish well inside the hour so seekers, owners and agents get timely nudges. | Growth / engagement team, owner, agent (as recipients) | **Reporting / batch job** (runs on a schedule, not a user click) | R08, R12, R17 |
+| P5 | The "projects with no listings" list for builder partnerships is **always empty**. | A *correct* list. This is a wrong-result bug, not just slowness: 120 projects have no listing but the query returns 0. | Builder (partnerships team) | **Reporting** (correctness first) | R13 |
+| P6 | Insight reports time out: price trends, rental yield, agent leaderboard, visit ratings, funnel. | Analytics that finish in seconds on growing data, with deterministic results (the leaderboard has ties). | Investor, agent (leaderboard), growth team | **Reporting / analytics** | R04, R14, R15, R21, R25 |
+| P7 | Trust & safety and platform reports are slow, and listings will grow 20×. | Fraud checks (same flat listed twice), a moderation console that pages through all listings, growth reports, safe sign-in, and a nightly clean-up job that still works at 20× volume. | Trust & safety, platform / growth team, every user (sign-in) | **Mixed**: moderation console and sign-in are interactive; fraud and growth reports and the nightly job are reporting / batch | R18, R19, R20, R22, R23, W04 |
+
+**What this decides for performance targets (from the brief, Phase 5).** Customer-facing problems P1–P3 use the strictest target: under 5 ms on the large data for single-record lookups and writes, and under 250 ms for interactive tools such as the amenity filter (R09), search box (R16) and moderation console (R22). Reporting problems P4–P6 and the report queries of P7 may take seconds (target under 5,000 ms). The nightly job W04 has its own batch target (under 1,000 ms).
+
+**Assumptions**
+1. "Real-time" means a user is waiting on a screen; "reporting" means a person or scheduled job reads the result later. The brief's per-query targets are the final authority where a problem mixes both (e.g. R09 belongs to the search problem P1 but is an interactive tool with a 250 ms target).
+2. The result of a query must not change when we optimize it, except where the original is wrong (R13). We will list each such case separately in the optimization report.
+3. "Now" for the workload is 1 July 2026 (the queries hard-code that date); we do not use `now()` in constraints because the seed data contains rows dated after 1 July 2026.
+4. Only seekers send enquiries, book visits and shortlist; only owners and agents list properties (true for 100% of the seed rows). We keep this as a documented rule, not a database constraint, because a CHECK cannot look into another table.
+5. A listing can be inside a project (apartment or villa) or stand alone (apartment, independent house or plot); this is why `properties.project_id` is allowed to be empty and why `NOT IN` on it is dangerous.
